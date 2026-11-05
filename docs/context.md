@@ -12,9 +12,15 @@
     instead of exceptions, library built with `-fno-exceptions -fno-rtti`.
     Scope: `include/` and `src/` only. Review record in `docs/misra.md`.
 
+- Task: Holmes & Featherstone Legendre engine (`dev/TaskOne-ThreeTermBenchmark`).
+  Fully normalized P̄ₙₘ(θ) up to degree 2700, MISRA style. See
+  `docs/legendre_hf.md`. Accuracy at degree 2190: 8e-12 against mpmath,
+  5e-15 to 7e-14 against pyshtools at mid-latitudes, about 50 ms per
+  evaluation. Next: derivatives, the gravity sum, and the benchmarking task.
+
 ## Validation results (MISRA version)
 
-- 33 tests pass with GCC 13 and Clang 18 (libstdc++), Clang 20 (libc++ 20),
+- 49 tests (33 parser, 16 Legendre) pass with GCC 13 and Clang 18 (libstdc++), Clang 20 (libc++ 20),
   warnings as errors, and under AddressSanitizer + UndefinedBehaviorSanitizer.
 - Zero heap allocations during parsing, including a full degree-2190 file
   load, on both libstdc++ and libc++ (counting `operator new`).
@@ -30,6 +36,10 @@
   each reviewed under MISRA Rule 8.7.1.
 
 ## Known gaps
+
+- `externals/reference_papers/Multithreaded_holmes.pdf` is a journal PDF in a
+  public repo; check its licence before keeping it there.
+- Legendre engine: no derivatives yet; memory access pattern not optimized.
 
 - MISRA compliance is manually reviewed, not checked by a qualified tool.
 - POSIX only (no Windows); libc++ must be 20 or newer.

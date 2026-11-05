@@ -27,31 +27,42 @@ function(gravlab_warnings target)
   endif()
 endfunction()
 
+# The libraries are the MISRA C++:2023 scope (docs/misra.md). They are built
+# without exceptions or RTTI, so the compiler enforces that they neither throw
+# nor catch, and with extra warnings that map onto MISRA rules.
+function(gravlab_misra_library target)
+  target_include_directories(${target} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
+  gravlab_warnings(${target})
+  if(NOT MSVC)
+    target_compile_options(${target} PRIVATE
+      -fno-exceptions -fno-rtti
+      -Wsign-conversion -Wold-style-cast -Wuseless-cast -Wcast-qual
+      -Wswitch-enum -Wswitch-default -Wundef -Wnull-dereference
+      -Wdouble-promotion -Wimplicit-fallthrough)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      # -Wuseless-cast is GCC only.
+      target_compile_options(${target} PRIVATE -Wno-unknown-warning-option)
+    endif()
+  endif()
+endfunction()
+
 add_library(gravlab_egm2008 src/egm2008.cpp)
 add_library(gravlab::egm2008 ALIAS gravlab_egm2008)
-target_include_directories(gravlab_egm2008 PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
-gravlab_warnings(gravlab_egm2008)
+gravlab_misra_library(gravlab_egm2008)
 
-# The library is the MISRA C++:2023 scope (docs/misra.md). Build it without
-# exceptions or RTTI so the compiler enforces that it neither throws nor
-# catches, and with extra warnings that map onto MISRA rules.
-if(NOT MSVC)
-  target_compile_options(gravlab_egm2008 PRIVATE
-    -fno-exceptions -fno-rtti
-    -Wsign-conversion -Wold-style-cast -Wuseless-cast -Wcast-qual
-    -Wswitch-enum -Wswitch-default -Wundef -Wnull-dereference
-    -Wdouble-promotion -Wimplicit-fallthrough)
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    # -Wuseless-cast is GCC only.
-    target_compile_options(gravlab_egm2008 PRIVATE -Wno-unknown-warning-option)
-  endif()
-endif()
+add_library(gravlab_legendre_hf src/legendre_holmes_and_featherstone.cpp)
+add_library(gravlab::legendre_hf ALIAS gravlab_legendre_hf)
+gravlab_misra_library(gravlab_legendre_hf)
 
 if(GRAVLAB_BUILD_TOOLS)
   add_executable(egm2008_dump tools/egm2008_dump.cpp)
   target_link_libraries(egm2008_dump PRIVATE gravlab::egm2008)
   gravlab_warnings(egm2008_dump)
+
+  add_executable(legendre_hf_dump tools/legendre_hf_dump.cpp)
+  target_link_libraries(legendre_hf_dump PRIVATE gravlab::legendre_hf)
+  gravlab_warnings(legendre_hf_dump)
 endif()
 
 if(GRAVLAB_BUILD_TESTS)
@@ -92,9 +103,18 @@ if(GRAVLAB_BUILD_TESTS)
   endif()
 
   enable_testing()
+
+  # Counts heap allocations in tests (replaces global operator new/delete).
+  add_library(gravlab_test_support STATIC tests/support/allocation_counter.cpp)
+  target_include_directories(gravlab_test_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+
   add_executable(egm2008_tests tests/test_egm2008.cpp)
-  target_link_libraries(egm2008_tests PRIVATE gravlab::egm2008 GTest::gtest_main)
+  target_link_libraries(egm2008_tests PRIVATE gravlab::egm2008 gravlab_test_support GTest::gtest_main)
   gravlab_warnings(egm2008_tests)
+
+  add_executable(legendre_hf_tests tests/test_legendre_holmes_and_featherstone.cpp)
+  target_link_libraries(legendre_hf_tests PRIVATE gravlab::legendre_hf gravlab_test_support GTest::gtest_main)
+  gravlab_warnings(legendre_hf_tests)
 
   # Full-file validation runs when the real file is available (after
   # `git lfs pull`), or when EGM2008_FILE points at a copy. Otherwise the
@@ -107,4 +127,5 @@ if(GRAVLAB_BUILD_TESTS)
 
   include(GoogleTest)
   gtest_discover_tests(egm2008_tests)
+  gtest_discover_tests(legendre_hf_tests)
 endif()

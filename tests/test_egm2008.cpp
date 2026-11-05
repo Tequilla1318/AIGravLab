@@ -3,84 +3,23 @@
 // Tests are outside the MISRA scope (GoogleTest itself is not MISRA
 // compliant); they use whatever is clearest.
 #include "gravlab/egm2008.hpp"
+#include "support/allocation_counter.hpp"
 
 #include <gtest/gtest.h>
 
-#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <new>
 #include <random>
 #include <string>
 
 namespace egm = gravlab::egm2008;
 using egm::Status;
 
-// ---------------------------------------------------------------------------
-// Count heap allocations, to prove the parser makes none.
-
-namespace {
-std::atomic<long> g_allocations{0};
-}
-
-// Every replaceable form is replaced, so all allocations go through malloc and
-// every deallocation through free (mixing with the default ones upsets ASan).
-namespace {
-void* counted_alloc(std::size_t size) noexcept {
-  g_allocations.fetch_add(1, std::memory_order_relaxed);
-  return std::malloc(size == 0 ? 1 : size);
-}
-void* counted_aligned_alloc(std::size_t size, std::align_val_t align) noexcept {
-  g_allocations.fetch_add(1, std::memory_order_relaxed);
-  const std::size_t a = static_cast<std::size_t>(align);
-  const std::size_t rounded = ((size == 0 ? 1 : size) + a - 1) / a * a;
-  return std::aligned_alloc(a, rounded);
-}
-}  // namespace
-
-void* operator new(std::size_t size) {
-  if (void* p = counted_alloc(size)) return p;
-  throw std::bad_alloc();
-}
-void* operator new[](std::size_t size) {
-  if (void* p = counted_alloc(size)) return p;
-  throw std::bad_alloc();
-}
-void* operator new(std::size_t size, const std::nothrow_t&) noexcept { return counted_alloc(size); }
-void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
-  return counted_alloc(size);
-}
-void* operator new(std::size_t size, std::align_val_t a) {
-  if (void* p = counted_aligned_alloc(size, a)) return p;
-  throw std::bad_alloc();
-}
-void* operator new[](std::size_t size, std::align_val_t a) {
-  if (void* p = counted_aligned_alloc(size, a)) return p;
-  throw std::bad_alloc();
-}
-void* operator new(std::size_t size, std::align_val_t a, const std::nothrow_t&) noexcept {
-  return counted_aligned_alloc(size, a);
-}
-void* operator new[](std::size_t size, std::align_val_t a, const std::nothrow_t&) noexcept {
-  return counted_aligned_alloc(size, a);
-}
-void operator delete(void* p) noexcept { std::free(p); }
-void operator delete[](void* p) noexcept { std::free(p); }
-void operator delete(void* p, std::size_t) noexcept { std::free(p); }
-void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
-void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
-void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
-void operator delete(void* p, std::align_val_t) noexcept { std::free(p); }
-void operator delete[](void* p, std::align_val_t) noexcept { std::free(p); }
-void operator delete(void* p, std::size_t, std::align_val_t) noexcept { std::free(p); }
-void operator delete[](void* p, std::size_t, std::align_val_t) noexcept { std::free(p); }
-void operator delete(void* p, std::align_val_t, const std::nothrow_t&) noexcept { std::free(p); }
-void operator delete[](void* p, std::align_val_t, const std::nothrow_t&) noexcept {
-  std::free(p);
-}
+// Heap allocations are counted by tests/support/allocation_counter.cpp, to
+// prove the parser makes none.
 
 namespace {
 
@@ -544,13 +483,13 @@ TEST(NoHeap, ParsingDoesNotAllocate) {
   double v = 0.0;
   egm::Coefficient c;
 
-  const long before = g_allocations.load();
+  const long before = gravlab_test::allocation_count();
   const Status s1 = egm::parse_fortran_double("-0.484165143790815D-03", v);
   const Status s2 = egm::parse_line("2 0 1D0 2D0 3D0 4D0", c);
   const egm::LoadResult r1 = egm::load_text(text, t, {});
   const egm::LoadResult r2 = egm::load_file(path.c_str(), t, {});
   const egm::LoadResult r3 = egm::load_file("/nonexistent/file", t, {});
-  const long after = g_allocations.load();
+  const long after = gravlab_test::allocation_count();
 
   EXPECT_EQ(s1, Status::ok);
   EXPECT_EQ(s2, Status::ok);
@@ -583,9 +522,9 @@ class FullEgm2008File : public ::testing::Test {
 TEST_F(FullEgm2008File, LoadsEveryCoefficientToDegree2190) {
   egm::CoefficientTable t = bind(g_full_storage.buffers(), 2190);
   const std::string file = path();  // allocate before measuring
-  const long before = g_allocations.load();
+  const long before = gravlab_test::allocation_count();
   const egm::LoadResult r = egm::load_file(file.c_str(), t, {});
-  EXPECT_EQ(g_allocations.load() - before, 0) << "full load allocated from the heap";
+  EXPECT_EQ(gravlab_test::allocation_count() - before, 0) << "full load allocated from the heap";
   ASSERT_EQ(r.status, Status::ok) << egm::describe(r.status) << " line " << r.line;
 
   // Every (n, m), 2 <= n <= 2190, exactly once: sum_{n=2}^{2190} (n + 1).

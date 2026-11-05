@@ -91,4 +91,4 @@ jobs:
           cppcheck --std=c++17 --language=c++ --enable=all --inconclusive
           --error-exitcode=1
           --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=checkersReport
-          -I include src/egm2008.cpp
+          -I include src/egm2008.cpp src/legendre_holmes_and_featherstone.cpp
