@@ -33,6 +33,21 @@ target_include_directories(gravlab_egm2008 PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 gravlab_warnings(gravlab_egm2008)
 
+# The library is the MISRA C++:2023 scope (docs/misra.md). Build it without
+# exceptions or RTTI so the compiler enforces that it neither throws nor
+# catches, and with extra warnings that map onto MISRA rules.
+if(NOT MSVC)
+  target_compile_options(gravlab_egm2008 PRIVATE
+    -fno-exceptions -fno-rtti
+    -Wsign-conversion -Wold-style-cast -Wuseless-cast -Wcast-qual
+    -Wswitch-enum -Wswitch-default -Wundef -Wnull-dereference
+    -Wdouble-promotion -Wimplicit-fallthrough)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # -Wuseless-cast is GCC only.
+    target_compile_options(gravlab_egm2008 PRIVATE -Wno-unknown-warning-option)
+  endif()
+endif()
+
 if(GRAVLAB_BUILD_TOOLS)
   add_executable(egm2008_dump tools/egm2008_dump.cpp)
   target_link_libraries(egm2008_dump PRIVATE gravlab::egm2008)

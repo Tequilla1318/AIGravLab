@@ -48,3 +48,20 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # Free static analysis of the MISRA-scope library (docs/misra.md). Not a
+  # MISRA checker; it backs up the manual review.
+  static-analysis:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Install cppcheck
+        run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: cppcheck
+        run: >
+          cppcheck --std=c++17 --language=c++ --enable=all --inconclusive
+          --error-exitcode=1
+          --suppress=missingIncludeSystem --suppress=unusedFunction --suppress=checkersReport
+          -I include src/egm2008.cpp
