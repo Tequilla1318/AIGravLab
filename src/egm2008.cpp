@@ -2,18 +2,23 @@
 //
 // MISRA C++:2023 notes for this file are in docs/misra.md. In short: no
 // dynamic memory, no exceptions, no C library string or I/O functions, no
-// <cctype>; numbers are converted with std::from_chars.
+// <cctype>; numbers are converted with std::from_chars; files are read with
+// POSIX open/read/close.
 #include "gravlab/egm2008.hpp"
+
+#include <fcntl.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
-#include <ios>
 #include <string_view>
 #include <system_error>
+#include <type_traits>
 
 namespace gravlab {
 namespace egm2008 {
@@ -25,9 +30,6 @@ constexpr std::size_t kFirstRealField{2U};
 
 // File reads go through this buffer; lines are split out of it in place.
 constexpr std::size_t kReadBufferSize{65536U};
-
-// Handed to std::filebuf so that opening a file does not allocate its own.
-constexpr std::size_t kFilebufSize{4096U};
 
 // string_view literals, so no character array decays to a pointer when the
 // constants are built (Rule 7.11.2).
@@ -151,6 +153,11 @@ class TextSource final {
 };
 
 // Line-by-line reader over a file, through a fixed buffer.
+//
+// Uses POSIX open/read/close rather than std::filebuf: libc++'s filebuf
+// allocates its buffer in its constructor, so no standard C++ file API is
+// heap-free on every standard library, and MISRA C++:2023 Rule 30.0.1 rules
+// out <cstdio>. See docs/misra.md, N1.
 class FileSource final {
  public:
   FileSource() noexcept = default;
@@ -158,14 +165,16 @@ class FileSource final {
   FileSource(FileSource&&) = delete;
   FileSource& operator=(const FileSource&) = delete;
   FileSource& operator=(FileSource&&) = delete;
-  ~FileSource() = default;
+  ~FileSource() {
+    if (fd_ >= 0) {
+      // Nothing useful can be done if closing a read-only file fails.
+      static_cast<void>(::close(fd_));
+    }
+  }
 
   bool open(const char* path) noexcept {
-    // Give the filebuf our own buffer before opening, so it does not
-    // allocate one. Large reads below bypass it anyway.
-    static_cast<void>(file_.pubsetbuf(filebuf_storage_.data(),
-                                      static_cast<std::streamsize>(kFilebufSize)));
-    return file_.open(path, std::ios_base::in | std::ios_base::binary) != nullptr;
+    fd_ = ::open(path, O_RDONLY);
+    return fd_ >= 0;
   }
 
   Status next_line(std::string_view& line, bool& end) noexcept {
@@ -215,8 +224,12 @@ class FileSource final {
     begin_ = 0U;
     end_ = remaining;
     const std::size_t room{kReadBufferSize - end_};
-    const std::streamsize got{
-        file_.sgetn(buffer_.data() + end_, static_cast<std::streamsize>(room))};
+    ssize_t got{-1};
+    bool retry{true};
+    while (retry) {
+      got = ::read(fd_, buffer_.data() + end_, room);
+      retry = (got < 0) && (errno == EINTR);  // interrupted by a signal
+    }
     if (got < 0) {
       status = Status::io_error;
     } else if (got == 0) {
@@ -227,8 +240,11 @@ class FileSource final {
     return status;
   }
 
-  std::array<char, kFilebufSize> filebuf_storage_{};
-  std::filebuf file_{};
+  // POSIX file descriptors are int; std::int32_t names the same type here
+  // without using the basic type name (Rule 6.9.2).
+  static_assert(std::is_same<std::int32_t, int>::value,
+                "file descriptors must be std::int32_t on this platform");
+  std::int32_t fd_{-1};
   std::array<char, kReadBufferSize> buffer_{};
   std::size_t begin_{0U};
   std::size_t end_{0U};

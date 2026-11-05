@@ -18,6 +18,10 @@ The library is written to MISRA C++:2023 (manually reviewed; see
 - **no exceptions**: every call returns a `Status` and is `noexcept`;
 - C++17, fixed-width integer types.
 
+Requirements: a POSIX system (files are read with `open`/`read`), and
+libstdc++ from GCC 12+ or libc++ 20+ (for `std::from_chars` on `double`).
+Windows/MSVC is not supported.
+
 ```cpp
 #include "gravlab/egm2008.hpp"
 
@@ -71,6 +75,14 @@ ctest --test-dir build --output-on-failure
 GoogleTest is taken from the system if installed (Ubuntu: `libgtest-dev`),
 otherwise fetched from GitHub. The library itself is built with
 `-fno-exceptions -fno-rtti`.
+
+To build against libc++, GoogleTest has to be built from source with the
+same standard library:
+
+```sh
+cmake -S . -B build-libcxx -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20 \
+  -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DGRAVLAB_GTEST_SOURCE_DIR=/usr/src/googletest
+```
 
 The two `FullEgm2008File` tests need the real data. They skip when only the LFS
 pointer is present. To run them, either `git lfs pull` or point `EGM2008_FILE`

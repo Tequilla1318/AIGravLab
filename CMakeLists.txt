@@ -55,10 +55,29 @@ if(GRAVLAB_BUILD_TOOLS)
 endif()
 
 if(GRAVLAB_BUILD_TESTS)
-  # Prefer an installed GoogleTest (e.g. Ubuntu's libgtest-dev); download it
-  # only when none is found.
-  find_package(GTest 1.10 CONFIG QUIET)
-  if(GTest_FOUND)
+  # GoogleTest, in order of preference:
+  #  1. GRAVLAB_GTEST_SOURCE_DIR: build it from source with this project's
+  #     flags. Needed for libc++ builds, because a packaged GoogleTest is
+  #     built against libstdc++. Ubuntu's `googletest` package puts the
+  #     source in /usr/src/googletest.
+  #  2. An installed GoogleTest (e.g. Ubuntu's libgtest-dev).
+  #  3. A download from GitHub.
+  set(GRAVLAB_GTEST_SOURCE_DIR "" CACHE PATH "Build GoogleTest from this source tree")
+  if(GRAVLAB_GTEST_SOURCE_DIR)
+    message(STATUS "Building GoogleTest from ${GRAVLAB_GTEST_SOURCE_DIR}")
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${GRAVLAB_GTEST_SOURCE_DIR} ${CMAKE_BINARY_DIR}/googletest EXCLUDE_FROM_ALL)
+    if(NOT TARGET GTest::gtest_main)
+      add_library(GTest::gtest_main ALIAS gtest_main)
+    endif()
+    set(GTest_FOUND TRUE)
+  else()
+    find_package(GTest 1.10 CONFIG QUIET)
+  endif()
+  if(GRAVLAB_GTEST_SOURCE_DIR)
+    # already set up above
+  elseif(GTest_FOUND)
     message(STATUS "Using installed GoogleTest ${GTest_VERSION}")
   else()
     message(STATUS "GoogleTest not found; fetching v1.14.0")

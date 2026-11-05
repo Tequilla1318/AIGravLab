@@ -49,6 +49,33 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  # Clang 20 with libc++ 20 (the first libc++ with std::from_chars for
+  # double). Runs the whole suite, including the NoHeap test, so the no-heap
+  # property is checked on both standard libraries. GoogleTest is built from
+  # source with libc++, because the packaged one is built against libstdc++.
+  libcxx:
+    runs-on: ubuntu-24.04
+    name: clang20-libc++
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Install Clang 20, libc++ 20 and GoogleTest sources
+        run: >
+          sudo apt-get update && sudo apt-get install -y
+          clang-20 libc++-20-dev libc++abi-20-dev googletest
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+          -DCMAKE_CXX_FLAGS="-stdlib=libc++"
+          -DGRAVLAB_GTEST_SOURCE_DIR=/usr/src/googletest
+          -DGRAVLAB_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
   # Free static analysis of the MISRA-scope library (docs/misra.md). Not a
   # MISRA checker; it backs up the manual review.
   static-analysis:
