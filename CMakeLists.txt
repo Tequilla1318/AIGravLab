@@ -33,6 +33,21 @@ target_include_directories(gravlab_egm2008 PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 gravlab_warnings(gravlab_egm2008)
 
+# The library is the MISRA C++:2023 scope (docs/misra.md). Build it without
+# exceptions or RTTI so the compiler enforces that it neither throws nor
+# catches, and with extra warnings that map onto MISRA rules.
+if(NOT MSVC)
+  target_compile_options(gravlab_egm2008 PRIVATE
+    -fno-exceptions -fno-rtti
+    -Wsign-conversion -Wold-style-cast -Wuseless-cast -Wcast-qual
+    -Wswitch-enum -Wswitch-default -Wundef -Wnull-dereference
+    -Wdouble-promotion -Wimplicit-fallthrough)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # -Wuseless-cast is GCC only.
+    target_compile_options(gravlab_egm2008 PRIVATE -Wno-unknown-warning-option)
+  endif()
+endif()
+
 if(GRAVLAB_BUILD_TOOLS)
   add_executable(egm2008_dump tools/egm2008_dump.cpp)
   target_link_libraries(egm2008_dump PRIVATE gravlab::egm2008)
@@ -40,10 +55,29 @@ if(GRAVLAB_BUILD_TOOLS)
 endif()
 
 if(GRAVLAB_BUILD_TESTS)
-  # Prefer an installed GoogleTest (e.g. Ubuntu's libgtest-dev); download it
-  # only when none is found.
-  find_package(GTest 1.10 CONFIG QUIET)
-  if(GTest_FOUND)
+  # GoogleTest, in order of preference:
+  #  1. GRAVLAB_GTEST_SOURCE_DIR: build it from source with this project's
+  #     flags. Needed for libc++ builds, because a packaged GoogleTest is
+  #     built against libstdc++. Ubuntu's `googletest` package puts the
+  #     source in /usr/src/googletest.
+  #  2. An installed GoogleTest (e.g. Ubuntu's libgtest-dev).
+  #  3. A download from GitHub.
+  set(GRAVLAB_GTEST_SOURCE_DIR "" CACHE PATH "Build GoogleTest from this source tree")
+  if(GRAVLAB_GTEST_SOURCE_DIR)
+    message(STATUS "Building GoogleTest from ${GRAVLAB_GTEST_SOURCE_DIR}")
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${GRAVLAB_GTEST_SOURCE_DIR} ${CMAKE_BINARY_DIR}/googletest EXCLUDE_FROM_ALL)
+    if(NOT TARGET GTest::gtest_main)
+      add_library(GTest::gtest_main ALIAS gtest_main)
+    endif()
+    set(GTest_FOUND TRUE)
+  else()
+    find_package(GTest 1.10 CONFIG QUIET)
+  endif()
+  if(GRAVLAB_GTEST_SOURCE_DIR)
+    # already set up above
+  elseif(GTest_FOUND)
     message(STATUS "Using installed GoogleTest ${GTest_VERSION}")
   else()
     message(STATUS "GoogleTest not found; fetching v1.14.0")
