@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "dev/**"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gcc-release
+            cxx: g++
+            build_type: Release
+            flags: ""
+          - name: clang-release
+            cxx: clang++
+            build_type: Release
+            flags: ""
+          - name: gcc-sanitizers
+            cxx: g++
+            build_type: Debug
+            flags: "-fsanitize=address,undefined -fno-sanitize-recover=all"
+    name: ${{ matrix.name }}
+    steps:
+      # LFS is not pulled: the coefficient file is 242 MB and would spend the
+      # account's LFS bandwidth on every run. The full-file tests skip here.
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Install GoogleTest
+        run: sudo apt-get update && sudo apt-get install -y libgtest-dev
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_FLAGS="${{ matrix.flags }}"
+          -DGRAVLAB_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
