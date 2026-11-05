@@ -1,0 +1,2 @@
+externals/egm2008/EGM2008_to2190_TideFree.txt filter=lfs diff=lfs merge=lfs -text
+externals/egm2008/Zeta-to-N_to2160_egm2008.txt filter=lfs diff=lfs merge=lfs -text
