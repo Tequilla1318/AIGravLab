@@ -97,3 +97,32 @@ independent, correctly rounded `float()`:
 ./build/egm2008_dump externals/egm2008/EGM2008_to2190_TideFree.txt > dump.txt
 python3 tools/validate_parser.py externals/egm2008/EGM2008_to2190_TideFree.txt dump.txt
 ```
+
+## Legendre engine (Holmes & Featherstone)
+
+`gravlab::legendre_hf` computes fully normalized associated Legendre functions
+P̄ₙₘ(cos θ), with the same normalization as EGM2008, for every n and m up to
+degree 2700. It uses the Holmes & Featherstone (2002) scaled recursion, so it
+stays accurate at every latitude. Details, validation and limits are in
+[docs/legendre_hf.md](docs/legendre_hf.md).
+
+```cpp
+#include "gravlab/legendre_holmes_and_featherstone.hpp"
+namespace hf = gravlab::legendre_hf;
+
+static hf::RecursionStorage<2190> tables;   // aₙₘ, bₙₘ, seeds (~38 MB)
+static hf::ValueStorage<2190> values;       // one set of P̄ₙₘ (~19 MB)
+
+hf::Recursion recursion;
+if (recursion.init(tables.buffers(), 2190) != hf::Status::ok) { /* ... */ }
+if (hf::evaluate(recursion, theta, 2190, values.data(), values.size()) == hf::Status::ok) {
+  double p = values.data()[gravlab::slot_index(n, m)];
+}
+```
+
+To compare it with pyshtools:
+
+```sh
+./build/legendre_hf_dump 2190 45 > /dev/null   # timing only
+python3 tools/validate_legendre_hf.py build/legendre_hf_dump 2190
+```

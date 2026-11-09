@@ -82,3 +82,33 @@ Consequences found while adding libc++:
   `double`.
 - **CMake option `GRAVLAB_GTEST_SOURCE_DIR`** builds GoogleTest from source,
   which a libc++ build needs.
+
+## 2026-11-05 — Legendre engine (Holmes & Featherstone)
+
+- **Scope of the first version: P̄ₙₘ values only.** The whole triangle is
+  computed for one θ and stored, matching the owner's plan to precompute
+  aₙₘ and bₙₘ once and then compute and store P̄ₙₘ per θ. Derivatives and the
+  gravity summation come next.
+- **Files and names follow the owner's branch:**
+  `legendre_holmes_and_featherstone.{hpp,cpp}`, namespace
+  `gravlab::legendre_hf`.
+- **Its own small `Status` enum** rather than the parser's, so the module
+  doesn't depend on the parser.
+- **Shared `triangular.hpp`** holds `slot_index`, `slot_count` and
+  `kMaxCapacity`, re-exported by `egm2008.hpp` (MISRA Rule 6.2.3).
+- **Power-of-two scale, 2⁻⁹³⁰**, instead of the paper's 10⁻²⁸⁰, so scaling is
+  exact.
+- **Coefficients rounded the SHTOOLS way** (a square root per integer factor)
+  after measuring a 15× accuracy difference at the pole against
+  single-square-root ratios.
+- **The unscaling factor is renormalized** to stay normal, so values down to
+  the double range keep full precision. This is an improvement over the paper
+  and over pyshtools 4.14, which lose about five digits near 10⁻²⁰⁰.
+- **`kMaxDegree = 2700`**, the paper's stated range for the scaled recursion.
+- **Test tolerances come from measurements.** Near the poles they allow for
+  the conditioning of rounding cos θ to double (about n²·ε), which was
+  verified against exact values.
+- **Test support:** the counting `operator new` moved to
+  `tests/support/allocation_counter.cpp` and is shared by both test suites.
+- **The repository was renamed** from GravLab to AIGravLab by the owner;
+  work continues on the renamed repo.

@@ -17,13 +17,13 @@ advisory) are given only where the review depended on them.
 
 | In scope | Out of scope |
 |---|---|
-| `include/gravlab/egm2008.hpp`, `src/egm2008.cpp` | `tests/` (GoogleTest is not MISRA compliant), `tools/` (developer utilities) |
+| `include/gravlab/egm2008.hpp`, `src/egm2008.cpp` (EGM2008 parser)<br>`include/gravlab/legendre_holmes_and_featherstone.hpp`, `src/legendre_holmes_and_featherstone.cpp` (Legendre engine)<br>`include/gravlab/triangular.hpp` (shared indexing) | `tests/` (GoogleTest is not MISRA compliant), `tools/` (developer utilities) |
 
 ## Design decisions behind the compliance
 
 | Decision | Rules served |
 |---|---|
-| No dynamic memory. The caller provides storage (`Storage<Capacity>` or its own `Buffers`); parsing uses fixed `std::array` buffers; files are read with POSIX `read()` into a fixed 64 KiB buffer. | 21.6.1, 21.6.2, 21.6.3 |
+| No dynamic memory. The caller provides storage (`Storage<Capacity>`, `RecursionStorage<N>`, `ValueStorage<N>` or its own buffers); parsing uses fixed `std::array` buffers; files are read with POSIX `read()` into a fixed 64 KiB buffer. | 21.6.1, 21.6.2, 21.6.3 |
 | No exceptions. Every operation returns a `Status` or a `LoadResult`, and every function is `noexcept`. The library is compiled with `-fno-exceptions -fno-rtti`, so the compiler enforces this. | 18.x, 18.4.1, 18.5.1 |
 | Numbers are converted with `std::from_chars`, never with `atof`, `strtod`, `<cctype>` or C I/O. | 21.2.1, 21.2.2, 24.5.1, 30.0.1 |
 | Fixed-width integer types (`std::int32_t`, `std::uint64_t`, `std::size_t`) throughout. | 6.9.2 |
@@ -36,10 +36,10 @@ advisory) are given only where the review depended on them.
 |---|---|
 | GCC 13 and Clang 18 (libstdc++), Clang 20 (libc++ 20); `-std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wshadow -Wold-style-cast -Wuseless-cast -Wcast-qual -Wswitch-enum -Wundef -Wnull-dereference -Wdouble-promotion -Werror` | clean |
 | Library built with `-fno-exceptions -fno-rtti` | builds |
-| cppcheck 2.13, `--enable=all --inconclusive` | no findings |
-| clang-tidy 18, `bugprone-*`, `cert-*`, `cppcoreguidelines-*`, `hicpp-*`, `misc-*`, selected `readability-*` | C++ Core Guidelines bounds-profile notes (pointer arithmetic, non-constant index), each reviewed under Rule 8.7.1 (N4), plus one vararg note for POSIX `open` (N2) |
-| `NoHeap` test: global `operator new` replaced with a counter around `parse_fortran_double`, `parse_line`, `load_text`, `load_file` (success and failure) and a full degree-2190 file load | 0 allocations on libstdc++ (GCC 13, Clang 18) and libc++ 20 (Clang 20) |
-| AddressSanitizer + UndefinedBehaviorSanitizer, all 33 tests including the full file | clean |
+| cppcheck 2.13, `--enable=all --inconclusive`, both libraries | no findings |
+| clang-tidy 18, `bugprone-*`, `cert-*`, `cppcoreguidelines-*`, `hicpp-*`, `misc-*`, selected `readability-*` | C++ Core Guidelines bounds-profile notes (pointer arithmetic, non-constant index), each reviewed under Rule 8.7.1 (N4, L1), plus one vararg note for POSIX `open` (N2) |
+| `NoHeap` tests: global `operator new` replaced with a counter (`tests/support/allocation_counter.cpp`) around `parse_fortran_double`, `parse_line`, `load_text`, `load_file` (success and failure), a full degree-2190 file load, and the Legendre `init()` and `evaluate()` at degree 2190 | 0 allocations on libstdc++ (GCC 13, Clang 18) and libc++ 20 (Clang 20) |
+| AddressSanitizer + UndefinedBehaviorSanitizer, all 49 tests (33 parser, 16 Legendre) | clean |
 | All 9,605,332 reals vs Python `float()`, bit for bit, libstdc++ and libc++ builds | 0 mismatches |
 
 ## Supported toolchains
@@ -143,6 +143,44 @@ because it returns nothing.
 exact for degrees up to `kMaxCapacity = 32767`, even with a 32-bit
 `std::size_t`. `bind()` rejects anything larger, and `Storage` checks it with
 a `static_assert`.
+
+## Legendre engine notes (L1–L6)
+
+The rule-by-rule record below applies to the Legendre engine as well; these
+are the points specific to it.
+
+**L1 — Rule 8.7.1, pointer arithmetic.** `evaluate()` indexes `values`, `a`,
+`b` and `seeds` through raw pointers. Every index is in bounds:
+
+| Access | Bound |
+|---|---|
+| `values[slot_index(n, m)]` | n ≤ degree, and `length ≥ slot_count(degree)` is checked first |
+| `a[i]`, `b[i]` | i = `slot_index(n, m)` with n ≤ degree ≤ `max_degree()`; `init()` checked `length ≥ slot_count(max_degree)` |
+| `seeds[m]` | m ≤ degree ≤ `max_degree()`; `init()` checked `seed_length ≥ max_degree + 1` |
+
+**L2 — Dir 0.3.1, floating-point use.** The method is designed around
+floating-point range. The scale and the renormalization factors are powers of
+two (`0x1p-930`, `0x1p900`), so applying them is exact. The only comparison
+with a floating constant is `factor > 0.0`, a sign test, never an equality.
+Accuracy is documented and tested in `docs/legendre_hf.md`.
+
+**L3 — `<cmath>` functions (Dir 0.3.2, Rule 22.4.1).** `std::sqrt` is only
+called on positive integers converted to `double`. `std::cos` and `std::sin`
+are only called on a θ already checked to lie in [0, π]. `std::ldexp` may set
+`errno` to `ERANGE` when a value underflows; the library never reads or
+assigns `errno`, so Rule 22.4.1 is not involved.
+
+**L4 — Hexadecimal floating literals.** `0x1p-930` is standard C++17
+(Rule 4.1.1) and states the exact power of two. No MISRA C++:2023 rule
+restricts hexadecimal floating literals; the octal and suffix rules (5.13.3,
+5.13.4) concern integer literals.
+
+**L5 — Rule 6.2.3, one definition.** `slot_count`, `slot_index` and
+`kMaxCapacity` live only in `triangular.hpp`. `egm2008.hpp` re-exports them
+with using-declarations instead of redefining them.
+
+**L6 — Rule 6.8.4.** `RecursionStorage::buffers()` and `ValueStorage::data()`
+return pointers into the object, so they are lvalue ref-qualified.
 
 ## Rule-by-rule record
 
